@@ -1,0 +1,56 @@
+# Ablation isolate Lever #2 — chỉ bật quality_weighted, các thứ khác = K=5 baseline.
+# So với rmfrd_k5_ablation (0.6103) để biết riêng quality_weighted có lợi không.
+#
+# Run: python eval/run_experiment.py --config configs/rmfrd_v2_only_qw.yaml
+
+model:
+  name: ensemble
+  embedding_dim: 512
+  device: cuda
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: true}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: true}
+
+detector:
+  det_size: [320, 320]
+  ctx_id: 0
+  det_thresh: 0.3
+  align_size: 112
+  align_mode: detect
+  fallback_align_mode: resize
+  pad_ratio: 0.0
+
+dataset:
+  name: rmfrd
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  raw_root: data/lfw/lfw-deepfunneled
+  masked_root: data/lfw/masked
+  mask_suffix: _surgical
+  batch_size: 64
+  num_workers: 4
+  gallery_size: null
+  gallery_shots: 5
+  allowed_extensions: [.jpg, .jpeg, .png, .bmp]
+  mask_gallery: false
+  mask_gallery_suffix: _surgical
+  quality_weighted: true              # <-- lever duy nhất bật
+  seed: 42
+
+matcher:
+  threshold: 0.4
+  top_k: 5
+
+eval:
+  far_targets: [0.001, 0.01, 0.1]
+  cmc_max_rank: 20
+  measure_latency: true
+  latency_warmup: 10
+  latency_iters: 1000
+
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: "rmfrd_v2_only_qw"

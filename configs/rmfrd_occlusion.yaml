@@ -1,0 +1,75 @@
+# RMFRD ablation — 3 lever MỚI bật trên nền rmfrd_clean (K=5 ensemble + clean subset):
+#   1. detector.align_landmarks = auto  → mặt đeo mask rớt sang align 3 điểm
+#   2. model.occlusion_mask     = lower_half → xám hóa vùng mask trước embed
+#   3. model.fusion             = calibrated → weighted fusion ưu tiên LVFace
+#
+# So sánh apples-to-apples: chạy CẢ HAI rồi đối chiếu Rank-1 (all_probes):
+#   python eval/run_experiment.py --config configs/rmfrd_clean.yaml       # baseline
+#   python eval/run_experiment.py --config configs/rmfrd_occlusion.yaml   # + 3 lever
+#
+# Muốn cô lập từng lever, override trực tiếp, ví dụ chỉ bật align:
+#   python eval/run_experiment.py --config configs/rmfrd_occlusion.yaml \
+#       --override model.occlusion_mask=none model.fusion=mean
+#
+# Pre-req: data/rmfrd/clean_identities.txt (xem hướng dẫn trong rmfrd_clean.yaml).
+
+model:
+  name: ensemble
+  embedding_dim: 512
+  device: cuda
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  # Lever #3: calibrated weighted fusion (mean = hành vi cũ).
+  fusion: calibrated
+  # Lever #2: occlusion-aware preprocessing (none | lower_half | periocular).
+  # Khai báo ở model-level → propagate xuống cả 2 member.
+  occlusion_mask: lower_half
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: true}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: true}
+
+detector:
+  det_size: [320, 320]
+  ctx_id: 0
+  det_thresh: 0.3
+  align_size: 112
+  align_mode: detect
+  fallback_align_mode: resize
+  pad_ratio: 0.0
+  # Lever #1: 5pt | 3pt | auto. auto = đo residual 5pt, lệch > thresh thì dùng 3pt.
+  align_landmarks: auto
+  auto_residual_thresh: 3.0
+
+dataset:
+  name: rmfrd
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  raw_root: data/lfw/lfw-deepfunneled
+  masked_root: data/lfw/masked
+  mask_suffix: _surgical
+  batch_size: 64
+  num_workers: 4
+  gallery_size: null
+  gallery_shots: 5
+  allowed_extensions: [.jpg, .jpeg, .png, .bmp]
+  mask_gallery: false
+  mask_gallery_suffix: _surgical
+  identity_allowlist: data/rmfrd/clean_identities.txt
+  quality_weighted: false
+  seed: 42
+
+matcher:
+  threshold: 0.4
+  top_k: 5
+
+eval:
+  far_targets: [0.001, 0.01, 0.1]
+  cmc_max_rank: 20
+  measure_latency: true
+  latency_warmup: 10
+  latency_iters: 1000
+
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: "rmfrd_occlusion"

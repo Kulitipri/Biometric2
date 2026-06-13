@@ -1,0 +1,69 @@
+# RMFRD v2 headline — gom toàn bộ lever "hiệu quả thực tế":
+#   #1 mask_gallery=true     → đẩy gallery về cùng phân phối masked với probe (+5-10pp)
+#   #2 quality_weighted=true → K-shot prototype có weight theo det_score × sharpness
+#   #4a pad_ratio=0.2 + det_size=416 → RetinaFace có "tai" để locate landmark
+#
+# Pre-req:
+#   python scripts/make_masked_rmfrd_gallery.py
+# (Sinh data/rmfrd/.../AFDB_face_masked_gallery/ — chỉ cần chạy 1 lần.)
+#
+# Run:
+#   python eval/run_experiment.py --config configs/rmfrd_v2.yaml
+#
+# Verify alignment quality riêng (Lever #4 acceptance):
+#   python scripts/measure_alignment_quality.py --config configs/rmfrd_lvface.yaml
+#   python scripts/measure_alignment_quality.py --config configs/rmfrd_lvface.yaml \
+#       --override detector.pad_ratio=0.2 detector.det_size=[416,416]
+#   (so intra mean + margin giữa 2 lần — pad chỉ "thật sự" tốt khi cả 2 tăng)
+
+model:
+  name: ensemble
+  embedding_dim: 512
+  device: cuda
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: true}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: true}
+
+detector:
+  det_size: [416, 416]       # tăng từ 320 → cần thêm pixel để locate landmark sau pad
+  ctx_id: 0
+  det_thresh: 0.3
+  align_size: 112
+  align_mode: detect
+  fallback_align_mode: resize
+  pad_ratio: 0.2             # BORDER_REFLECT pad 20% trước khi detect (Lever #4a)
+
+dataset:
+  name: rmfrd
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  raw_root: data/lfw/lfw-deepfunneled
+  masked_root: data/lfw/masked
+  mask_suffix: _surgical
+  batch_size: 64
+  num_workers: 4
+  gallery_size: null
+  gallery_shots: 5
+  allowed_extensions: [.jpg, .jpeg, .png, .bmp]
+  mask_gallery: true                  # Lever #1
+  mask_gallery_suffix: _surgical
+  quality_weighted: true              # Lever #2
+  seed: 42
+
+matcher:
+  threshold: 0.4
+  top_k: 5
+
+eval:
+  far_targets: [0.001, 0.01, 0.1]
+  cmc_max_rank: 20
+  measure_latency: true
+  latency_warmup: 10
+  latency_iters: 1000
+
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: "rmfrd_v2"

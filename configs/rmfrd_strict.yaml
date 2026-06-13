@@ -1,0 +1,78 @@
+# RMFRD strict headline — clean subset + 3 lever phía probe:
+#   #1 min_probe_short_side: loại probe ảnh < 80px (low-res không đủ pixel).
+#   #2 fallback_align_mode=null: bỏ resize-fallback → mọi probe đều có alignment
+#      thật, không cộng dồn các sample không có landmark.
+#   #5 max_landmark_residual=5.0: gate "detect OK nhưng align lệch" (mask che 2
+#      landmark miệng / pose nhẹ + low-res).
+#
+# Ngưỡng chọn từ phân phối THỰC (scripts/diagnose_probe_quality.py), không
+# hardcode tùy tiện. Báo cáo nên đặt cạnh:
+#   - full RMFRD k5_ablation (R1=0.6103)
+#   - rmfrd_clean (R1=0.6123)  -> + gallery self-consistency
+#   - rmfrd_strict (đây)        -> + 3 lever probe-side
+#
+# Run:
+#   python eval/run_experiment.py --config configs/rmfrd_strict.yaml
+
+model:
+  name: ensemble
+  embedding_dim: 512
+  device: cuda
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: true}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: true}
+
+detector:
+  det_size: [320, 320]
+  ctx_id: 0
+  det_thresh: 0.3
+  align_size: 112
+  align_mode: detect
+  # Lever #2: bỏ fallback resize — sample mà detector fail bị tính là MISS,
+  # không "gian lận" bằng resize ảnh gốc (mất affine warp).
+  fallback_align_mode: null
+  pad_ratio: 0.0
+
+dataset:
+  name: rmfrd
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  raw_root: data/lfw/lfw-deepfunneled
+  masked_root: data/lfw/masked
+  mask_suffix: _surgical
+  batch_size: 64
+  num_workers: 4
+  gallery_size: null
+  gallery_shots: 5
+  allowed_extensions: [.jpg, .jpeg, .png, .bmp]
+  mask_gallery: false
+  mask_gallery_suffix: _surgical
+  identity_allowlist: data/rmfrd/clean_identities.txt
+  # Lever #1: loại probe có short_side < 80px. Phân phối: p10=56 p25=74
+  # p50=107 → cutoff 80 loại ~30% probe. Defensible vì pretrained ArcFace/
+  # LVFace train trên crop ≥112px, dưới 80px gần như "chỉ là blob".
+  min_probe_short_side: 80
+  # Lever #5: probe-only landmark-quality gate (px @ 112x112). Phân phối probe:
+  # p90=5.44 p95=7.28 → cutoff 5.0 nằm tại elbow → loại ca align lệch nặng.
+  # KHÔNG áp cho gallery (sẽ làm sập K-shot enrollment, mất nhiều identity).
+  max_probe_landmark_residual: 5.0
+  quality_weighted: false
+  seed: 42
+
+matcher:
+  threshold: 0.4
+  top_k: 5
+
+eval:
+  far_targets: [0.001, 0.01, 0.1]
+  cmc_max_rank: 20
+  measure_latency: true
+  latency_warmup: 10
+  latency_iters: 1000
+
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: "rmfrd_strict"

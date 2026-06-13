@@ -1,0 +1,86 @@
+# Default experiment config cho face recognition (masked) pipeline.
+# Override bằng CLI: --override model.name=lvface dataset.batch_size=128
+# Hoặc copy file này thành configs/<your_exp>.yaml và truyền --config configs/<your_exp>.yaml
+
+# ---- Model ----
+# name: facenet | arcface | lvface  (3 model đã chốt trong CLAUDE.md)
+# weights: path tới file pretrained (.pth cho facenet, .onnx cho arcface/lvface)
+# Tất cả model output 512-d L2-normalized — KHÔNG đổi embedding_dim.
+model:
+  name: arcface
+  weights: weights/arcface_r100.onnx
+  embedding_dim: 512
+  device: cuda            # cuda | cpu
+  providers:              # chỉ áp dụng cho ONNX (arcface, lvface)
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  # Test-time augmentation: forward cả ảnh gốc + horizontal flip, mean rồi
+  # L2-renorm. Doubles inference cost; thường +1-3% Rank-1 trên masked face.
+  tta: false
+  # Occlusion-aware: xám hóa vùng mask trước khi embed.
+  #   none | lower_half (xám từ dưới mũi) | periocular (chỉ giữ dải quanh mắt)
+  occlusion_mask: none
+  # Fusion (chỉ khi name=ensemble): mean (cosine thô) | calibrated
+  # (src.fusion.weighted_fuse — calibrate per-model + ưu tiên LVFace).
+  fusion: mean
+
+# ---- Detector (RetinaFace + alignment 112x112 chuẩn ArcFace) ----
+detector:
+  det_size: [640, 640]    # input resize cho RetinaFace
+  ctx_id: 0               # GPU id, -1 = CPU
+  det_thresh: 0.5         # confidence threshold để giữ face
+  align_size: 112         # KHÔNG đổi — chuẩn ArcFace
+  # detect = full pipeline (LFW, webcam). resize = skip detector cho ảnh đã
+  # pre-cropped face (RMFRD AFDB ~150x140). Xem configs/rmfrd.yaml.
+  align_mode: detect      # detect | resize
+  # Nếu detect fail và fallback_align_mode='resize', encode bằng resize ảnh
+  # gốc thay vì skip. Hữu ích cho RMFRD: trade off chất lượng alignment lấy
+  # độ phủ probe. Sample được count vào n_fallback_* để biết tỉ lệ.
+  fallback_align_mode: null  # null | resize
+  # Lever #4a: pad ảnh BORDER_REFLECT theo ratio trước khi detect. Tight-crop
+  # face (RMFRD ~150px) thiếu context → RetinaFace landmark lệch; pad cho
+  # "không gian" để locate. 0.0 = off. Đo bằng scripts/measure_alignment_quality.
+  pad_ratio: 0.0
+  # Landmark template cho affine alignment:
+  #   5pt  - 2 mắt + mũi + 2 khóe miệng (mặc định, chuẩn ArcFace)
+  #   3pt  - chỉ 2 mắt + mũi (robust khi mask che khóe miệng)
+  #   auto - đo residual 5pt; lệch > auto_residual_thresh px thì dùng 3pt
+  align_landmarks: 5pt
+  auto_residual_thresh: 3.0   # px, chỉ dùng khi align_landmarks=auto
+
+# ---- Dataset ----
+# name: lfw_raw | lfw_masked | rmfrd | mafa
+#   lfw_raw     - unmasked baseline
+#   lfw_masked  - LFW sinh mask bằng MaskTheFace (main controlled test)
+#   rmfrd       - Real-World Masked Face Dataset (synthetic→real validation)
+#   mafa        - MAFA subset (stress test mask type/color/pose)
+dataset:
+  name: lfw_masked
+  # LFW (lfw_masked / lfw_raw):
+  raw_root: data/lfw/lfw-deepfunneled   # gallery (unmasked) lấy từ đây
+  masked_root: data/lfw/masked           # probe (masked) — sinh bằng MaskTheFace
+  mask_suffix: _surgical          # suffix MaskTheFace gắn vào filename
+  # RMFRD (rmfrd):
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  batch_size: 64
+  num_workers: 4
+  # Headline experiment (Exp 2 CMC) dùng subset cố định — per proposal §8.
+  # null = dùng toàn bộ identities có ≥2 ảnh.
+  gallery_size: 500
+  # Số ảnh unmasked / identity trong gallery. 1 = baseline (so sánh literature),
+  # 3-5 = multi-shot enrollment (sát use case phone unlock). Khi >1, embeddings
+  # của K ảnh được mean + L2-renormalize thành 1 prototype/identity.
+  # Identity có <K+1 ảnh sẽ bị skip.
+  gallery_shots: 1
+  # Allowlist case-insensitive cho image discovery. Để null = dùng default
+  # (.jpg/.jpeg/.png/.bmp). LFW-only dùng .jpg là đủ; RMFRD cần đầy đủ list
+  # vì AFDB lẫn nhiều extension.
+  allowed_extensions: null
+  # Lever #1 (RMFRD only): dùng synthetic-masked gallery thay vì unmasked.
+  # Pre-req: chạy scripts/make_masked_rmfrd_gallery.py để sinh thư mục
+  # AFDB_face_masked_gallery/. Bật → gallery + probe cùng phân phối "masked".
+  mask_gallery: false
+  mask_gallery_suffix: _surgical
+  # Lever #2: K-shot aggregate dùng weight = det_score * sharpness (Laplacian
+  # variance) thay vì mean uniform. Chỉ có tác dụng khi K>1.
+  qual

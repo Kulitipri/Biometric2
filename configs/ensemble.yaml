@@ -1,0 +1,51 @@
+# Ensemble config: score-level fusion ArcFace + LVFace.
+# Run: python eval/run_experiment.py --config configs/ensemble.yaml
+# Override: --override dataset.gallery_shots=3   (vẫn dùng được)
+#
+# Cách hoạt động: detector chạy 1 lần / ảnh, mỗi member embed riêng,
+# tính sim với gallery riêng, rồi mean các sim matrices → rank.
+
+model:
+  name: ensemble
+  embedding_dim: 512        # mỗi member; matcher dùng riêng từng member
+  device: cuda
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: false}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: false}
+
+detector:
+  det_size: [640, 640]
+  ctx_id: 0
+  det_thresh: 0.5
+  align_size: 112
+
+dataset:
+  name: lfw_masked
+  raw_root: data/lfw/lfw-deepfunneled
+  masked_root: data/lfw/masked
+  mask_suffix: _surgical
+  root: data/rmfrd/self-built-masked-face-recognition-dataset
+  batch_size: 64
+  num_workers: 4
+  gallery_size: 500
+  gallery_shots: 1
+  seed: 42
+
+matcher:
+  threshold: 0.4
+  top_k: 5
+
+eval:
+  far_targets: [0.001, 0.01, 0.1]
+  cmc_max_rank: 20
+  measure_latency: true
+  latency_warmup: 10
+  latency_iters: 1000
+
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: "ensemble"

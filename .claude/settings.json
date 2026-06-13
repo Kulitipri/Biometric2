@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python eval/run_experiment.py *)",
+      "Bash(python scripts/verify_pair.py *)"
+    ]
+  }
+}

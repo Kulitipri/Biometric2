@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.ipynb_checkpoints/
+
+# Project artifacts (per CLAUDE.md)
+weights/
+data/
+experiments/*.json
+experiments/*.png
+experiments/*.pdf
+experiments/*.csv
+experiments/*.log
+# scratch run logs / temp dumps
+experiments/_*
+
+# Demo / debug outputs
+outputs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Third-party tools (clone on demand)
+third_party/

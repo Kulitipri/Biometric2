@@ -1,0 +1,27 @@
+# Core
+numpy<2            # insightface wheel cộng đồng compile với numpy 1.x → cần pin <2
+opencv-python
+Pillow
+
+# Deep learning
+torch              # CUDA 12.1 build — cài qua index-url tương ứng
+torchvision
+onnxruntime-gpu
+
+# Face stack
+# insightface: trên Windows + Python 3.10, KHÔNG `pip install insightface` (cần MSVC Build Tools).
+# Dùng prebuilt wheel của cộng đồng SD WebUI:
+#   pip install https://github.com/Gourieff/Assets/raw/main/Insightface/insightface-0.7.3-cp310-cp310-win_amd64.whl
+# Trên Linux/macOS: pip install insightface chạy bình thường.
+facenet-pytorch    # FaceNet baseline
+
+# Eval & viz
+scikit-learn
+matplotlib
+tqdm
+
+# Demo
+gradio
+
+# Config
+PyYAML
