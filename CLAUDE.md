@@ -51,8 +51,8 @@ face-recognition-masked/
 ├── experiments/              # JSON kết quả + biểu đồ (gitignored)
 ├── notebooks/                # Sanity checks, visualization
 ├── demo/
-│   ├── verify_app.py         # Gradio 1:1 verification (demo chính hiện có)
-│   └── webcam_app.py         # Gradio 1:N webcam (stub — chưa implement)
+│   ├── verify_app.py         # Gradio 1:1 verification
+│   └── webcam_app.py         # Gradio 1:N webcam realtime (enroll K-shot + identify + open-set reject)
 └── weights/                  # Pretrained ONNX/pth files (gitignored)
 ```
 
@@ -133,4 +133,14 @@ cd third_party/MaskTheFace && python mask_the_face.py --path ../../data/lfw/raw 
 
 ## Reference Documents
 
-- **Project proposal (v2):** @docs/Group_12_Proposal_v2.docx — đọc khi cần context về methodology,
+- **Project proposal (v2):** @docs/Group_12_Proposal_v2.docx — đọc khi cần context về methodology, dataset strategy, expected outcomes
+- **MaskTheFace tool:** https://github.com/aqeelanwar/MaskTheFace
+- **InsightFace docs:** https://github.com/deepinsight/insightface
+- **LVFace (SOTA masked):** https://github.com/bytedance/LVFace
+
+## Out of Scope (tránh làm)
+
+- Train model từ đầu hoặc fine-tune (đã quyết định pretrained-only)
+- Xử lý kính, mũ, pose occlusion (chỉ mask)
+- GAN-based unmasking approaches (quá phức tạp cho thời lượng môn)
+- Mobile deployment (chỉ demo trên laptop)

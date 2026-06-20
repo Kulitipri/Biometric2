@@ -202,4 +202,54 @@ class FaceDetector:
 
         Pad cùng số pixel mọi cạnh → bbox/landmark vẫn đúng coordinate space
         so với ảnh đã pad; downstream alignment dùng cùng ảnh đã pad nên
-        không cần shift ngược 
+        không cần shift ngược về ảnh gốc.
+        """
+        if self.pad_ratio <= 0.0:
+            return img
+        h, w = img.shape[:2]
+        pad = int(round(min(h, w) * self.pad_ratio))
+        if pad == 0:
+            return img
+        return cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+
+    def detect_and_align(self, img: np.ndarray) -> list[np.ndarray]:
+        """Convenience: detect → align all faces. Returns list of (112,112,3),
+        best detection first.
+
+        Khi align_mode='resize': skip detector, resize ảnh thẳng về 112x112 và
+        return [single_face].
+        """
+        if self.align_mode == "resize":
+            return [self._resize_face(img)]
+        padded = self._maybe_pad(img)
+        return [self.align(padded, f["kps"]) for f in self.detect(padded)]
+
+    def detect_and_align_best(
+        self, img: np.ndarray
+    ) -> tuple[np.ndarray | None, str, float]:
+        """Return (best_face, source_tag, det_score) for a single image.
+
+        source_tag values:
+            'resize'           -- align_mode='resize' (bypass detector by config)
+            'detect'           -- RetinaFace found at least one face; pick highest
+            'fallback_resize'  -- detector failed; fallback_align_mode='resize'
+                                  resizes whole image as a last resort
+            'skip'             -- detector failed and no fallback configured
+
+        Side-effect: self.last_landmark_residual set sau mỗi detect thành công
+        (None nếu detect không chạy / fail). Caller dùng để gate (Lever #5,
+        áp probe-only — đặt ở encode_dataset, không phải ở đây).
+        """
+        self.last_landmark_residual = None
+        if self.align_mode == "resize":
+            return self._resize_face(img), "resize", 0.0
+        padded = self._maybe_pad(img)
+        faces = self.detect(padded)
+        if faces:
+            best = faces[0]
+            # Đo cho diagnostic / probe-gate downstream (vài trăm µs — rẻ).
+            self.last_landmark_residual = landmark_alignment_residual(best["kps"])
+            return self.align(padded, best["kps"]), "detect", best["score"]
+        if self.fallback_align_mode == "resize":
+            return self._resize_face(img), "fallback_resize", 0.0
+        return None, "skip", 0.0

@@ -151,4 +151,43 @@ def build_app(
         # đã copy (Ctrl+V) trực tiếp vào ô.
         with gr.Row():
             in_ref = gr.Image(
-                la
+                label="Ảnh reference (mặt rõ) — upload hoặc paste (Ctrl+V)",
+                type="numpy",
+                sources=["upload", "clipboard"],
+            )
+            in_probe = gr.Image(
+                label="Ảnh probe (đeo mask) — upload hoặc paste (Ctrl+V)",
+                type="numpy",
+                sources=["upload", "clipboard"],
+            )
+        btn = gr.Button("So sánh", variant="primary")
+        out_md = gr.Markdown()
+        with gr.Row():
+            out_ref = gr.Image(label="Reference đã align (112×112)")
+            out_probe = gr.Image(label="Probe đã align (112×112)")
+
+        btn.click(
+            fn=lambda r, p: verify(r, p, detector, embedders, threshold),
+            inputs=[in_ref, in_probe],
+            outputs=[out_ref, out_probe, out_md],
+        )
+    return app
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument("--config", default="configs/default.yaml")
+    p.add_argument("--override", nargs="*", default=[])
+    p.add_argument("--share", action="store_true", help="Tạo public link Gradio.")
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    detector, embedders, threshold = load_pipeline(args.config, args.override)
+    app = build_app(detector, embedders, threshold)
+    app.launch(share=args.share)
+
+
+if __name__ == "__main__":
+    main()

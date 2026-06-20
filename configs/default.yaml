@@ -23,6 +23,12 @@ model:
   # Fusion (chỉ khi name=ensemble): mean (cosine thô) | calibrated
   # (src.fusion.weighted_fuse — calibrate per-model + ưu tiên LVFace).
   fusion: mean
+  # Chỉ đọc khi name=ensemble (ví dụ --override model.name=ensemble). Mỗi member
+  # embed riêng rồi fusion. Giữ trùng với configs/ensemble.yaml để override hoạt
+  # động mà không cần đổi --config. Bị BỎ QUA khi chạy single-model.
+  members:
+    - {name: arcface, weights: weights/arcface_r100.onnx, tta: false}
+    - {name: lvface,  weights: weights/lvface.onnx,       tta: false}
 
 # ---- Detector (RetinaFace + alignment 112x112 chuẩn ArcFace) ----
 detector:
@@ -83,4 +89,34 @@ dataset:
   mask_gallery_suffix: _surgical
   # Lever #2: K-shot aggregate dùng weight = det_score * sharpness (Laplacian
   # variance) thay vì mean uniform. Chỉ có tác dụng khi K>1.
-  qual
+  quality_weighted: false
+  seed: 42
+
+# ---- Matcher (cosine similarity) ----
+matcher:
+  threshold: 0.4          # cutoff cho verification (sanity check rule trong CLAUDE.md)
+  top_k: 5                # cho identification: lấy top-K từ gallery
+
+# ---- Evaluation ----
+eval:
+  far_targets: [0.001, 0.01, 0.1]   # các điểm FAR cần report TAR
+  cmc_max_rank: 20                  # CMC curve vẽ tới rank này
+  measure_latency: true
+  latency_warmup: 10                # warm-up trước khi đo (per CLAUDE.md)
+  latency_iters: 1000
+
+# ---- Face restoration (Lever A — break-ceiling, optional) ----
+# Pretrained CodeFormer phục chế mặt nhỏ TRƯỚC detect+align. Recognition vẫn
+# pretrained — đây chỉ là tầng tiền xử lý. Mặc định TẮT (giữ pipeline cũ).
+restorer:
+  enabled: false
+  weights: weights/codeformer.pth
+  min_short_side: 100     # chỉ restore mặt có cạnh ngắn < ngưỡng này
+  fidelity: 0.7           # w: 0=đẹp/hallucinate nhiều, 1=trung thực/an toàn identity
+  device: cuda
+
+# ---- Experiment bookkeeping ----
+experiment:
+  output_dir: experiments
+  seed: 42
+  tag: ""                 # optional suffix cho tên output, ví dụ "ablation_v1"

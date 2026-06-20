@@ -25,3 +25,13 @@ gradio
 
 # Config
 PyYAML
+
+# Face restoration (Lever A — chỉ cần khi restorer.enabled=true)
+# Cách 1 (gọn): pip install codeformer-pip
+# Cách 2 (vendor): git clone https://github.com/sczhou/CodeFormer third_party/CodeFormer
+#                  rồi cài 2 dòng dưới.
+# Lỗi 'functional_tensor' với torchvision mới: xem hướng dẫn vá trong src/restorer.py
+basicsr
+facexlib
+# Weight: tải weights/codeformer.pth từ
+#   https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth

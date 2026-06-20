@@ -252,7 +252,7 @@ def main() -> None:
         wlabel = "weighted" if q_weights is not None else "uniform"
         print(
             f"Multi-shot K={gallery_shots} ({wlabel}): "
-            f"{n_before} gallery embs → {len(g_ids)} prototypes"
+            f"{n_before} gallery embs -> {len(g_ids)} prototypes"
         )
 
     # --- Match + metrics ---
@@ -324,4 +324,50 @@ def main() -> None:
         "n_impostor_pairs": int((labels == 0).sum()),
         "n_probe_total": n_probe_total,
         "n_probe_encoded": n_probe_encoded,
-        "pro
+        "probe_skip_rate": probe_skip_rate,
+        "n_probe_fallback": p_stats["n_fallback"],
+        "n_probe_too_small": p_stats.get("n_too_small", 0),
+        "n_probe_skip_detect": p_stats.get("n_skip_detect", 0),
+        "n_probe_reject_landmark": p_stats.get("n_reject_landmark", 0),
+        "n_probe_restored": p_stats.get("n_restored", 0),
+        "n_gallery_fallback": g_stats["n_fallback"],
+        "n_gallery_restored": g_stats.get("n_restored", 0),
+    }
+
+    # --- Save ---
+    out_dir = ensure_dir(cfg["experiment"]["output_dir"])
+    tag = cfg["experiment"].get("tag") or ""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = f"{model_save_name}_{cfg['dataset']['name']}{('_' + tag) if tag else ''}_{stamp}"
+    # Lọc các list quality nội bộ (det_scores/sharpness) khỏi JSON — không
+    # cần trong report, chỉ dùng để tính weights.
+    g_stats_out = {k: v for k, v in g_stats.items() if k not in {"det_scores", "sharpness"}}
+    p_stats_out = {k: v for k, v in p_stats.items() if k not in {"det_scores", "sharpness"}}
+    result = {
+        "config": cfg,
+        "n_gallery": len(g_ids),
+        "n_probe": len(p_ids),
+        "gallery_stats": g_stats_out,
+        "probe_stats": p_stats_out,
+        # Backward-compat alias.
+        "n_skipped_gallery": g_stats_out["n_skipped"],
+        "n_skipped_probe": p_stats_out["n_skipped"],
+        "metrics": metrics,
+        "timestamp": stamp,
+    }
+    out_path = out_dir / f"{name}.json"
+    out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"\nRank-1  (encoded):    {metrics['rank_1_encoded']:.4f}")
+    print(f"Rank-1  (all probes): {metrics['rank_1_all_probes']:.4f}  "
+          f"<- headline (skip = miss, rate={metrics['probe_skip_rate']:.3f})")
+    print(f"Rank-5  (encoded):    {metrics['rank_5_encoded']:.4f}")
+    print(f"Rank-5  (all probes): {metrics['rank_5_all_probes']:.4f}")
+    print(f"Rank-10 (encoded):    {metrics['rank_10_encoded']:.4f}")
+    print(f"EER:     {metrics['eer']:.4f} (thresh={metrics['eer_threshold']:.4f})")
+    for k in (f"tar@far={t}" for t in far_targets):
+        print(f"{k:14s} {metrics[k]:.4f}")
+    print(f"Saved:   {out_path}")
+
+
+if __name__ == "__main__":
+    main()

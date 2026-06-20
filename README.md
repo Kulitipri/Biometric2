@@ -24,3 +24,15 @@ python notebooks/02_pipeline_smoke_test.py
 
 # Chạy 1 experiment (config-driven; đổi model/dataset qua --override)
 python eval/run_experiment.py --config configs/default.yaml
+python eval/run_experiment.py --override model.name=arcface dataset.name=lfw_masked
+
+# Demo 1:1 verification (Gradio)
+python demo/verify_app.py
+
+# Demo 1:N identification realtime qua webcam (Gradio)
+#   Tab Đăng ký: thêm người vào gallery (webcam/upload, tối đa K=3 ảnh/người)
+#   Tab Nhận diện: webcam streaming → top-1, từ chối người lạ (open-set)
+python demo/webcam_app.py
+python demo/webcam_app.py --override model.name=ensemble   # arcface + lvface fusion
+python demo/webcam_app.py --max-shots 5                    # K=5 enrollment
+```
