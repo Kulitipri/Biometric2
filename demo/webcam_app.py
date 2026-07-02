@@ -32,8 +32,10 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import fusion
+from src.config import load_config
 from src.detector import FaceDetector
 from src.embedder import BaseEmbedder
+from src.liveness import LivenessDetector, build_liveness
 from src.matcher import Matcher
 from src.utils import aggregate_by_identity
 
@@ -172,10 +174,13 @@ def identify(
     store: GalleryStore,
     detector: FaceDetector,
     embedders: list[BaseEmbedder],
+    liveness: LivenessDetector | None,
 ) -> tuple[np.ndarray | None, str]:
     """Stream handler: 1 frame webcam → annotate + verdict markdown.
 
     Open-set: nếu top-1 confidence < `reject` → "Unknown" (từ chối người lạ).
+    PAD gate: nếu liveness phát hiện spoof (mặt chiếu qua phone/in giấy) → từ chối
+    NGAY, không identify.
     """
     if frame_rgb is None:
         return None, ""
@@ -190,6 +195,30 @@ def identify(
 
     # Chỉ xử lý face tự tin nhất (use case phone-unlock: 1 người trước camera).
     best = faces[0]
+
+    # ── PAD gate: chặn replay attack TRƯỚC khi identify ──────────────────────
+    # MiniFASNet đọc frame GỐC + bbox (không phải crop align 112) để "nhìn thấy"
+    # viền màn hình / moiré — dấu vết của mặt chiếu qua phone. Spoof → short-circuit.
+    if liveness is not None:
+        pad = liveness.predict(frame_bgr, best["bbox"])
+        if not pad["is_live"]:
+            h, w = frame_bgr.shape[:2]
+            x1, y1, x2, y2 = best["bbox"].astype(int)
+            x1, y1 = max(x1, 0), max(y1, 0)
+            x2, y2 = min(x2, w - 1), min(y2, h - 1)
+            cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), (0, 0, 255), 3)  # đỏ
+            cv2.putText(
+                frame_bgr, f"SPOOF {pad['score'] * 100:.0f}", (x1, max(y1 - 8, 14)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA,
+            )
+            spoof_md = (
+                "### 🚫 Phát hiện giả mạo (spoof)\n\n"
+                f"Mặt có vẻ được **chiếu qua màn hình / ảnh in** — P(live) = "
+                f"**{pad['score'] * 100:.1f}/100** dưới ngưỡng. Không nhận diện.\n\n"
+                "<sub>Anti-spoofing PAD (MiniFASNet). Đưa mặt thật trước camera để mở khoá.</sub>"
+            )
+            return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB), spoof_md
+
     face_crop = detector.align(frame_bgr, best["kps"])  # (112,112,3) BGR
     topk = _fuse_topk(face_crop, embedders, matchers, k=3)
     top_id, top_conf = topk[0]
@@ -235,6 +264,7 @@ def build_app(
     embedders: list[BaseEmbedder],
     threshold: float,
     max_shots: int,
+    liveness: LivenessDetector | None,
 ) -> gr.Blocks:
     """2 tab: Enroll (đăng ký) + Identify (nhận diện realtime)."""
     # Demo chạy local 1 người dùng → 1 GalleryStore dùng chung qua closure (không
@@ -250,7 +280,8 @@ def build_app(
             "**Tab Nhận diện:** bật webcam → hệ thống nhận diện realtime, từ chối "
             "người lạ nếu điểm dưới ngưỡng.\n\n"
             f"Model: `{model_label}` · align=5pt · TTA=on · fusion=calibrated · "
-            f"threshold(eval ref)={threshold:.3f}"
+            f"threshold(eval ref)={threshold:.3f} · anti-spoof(PAD)="
+            f"{'on 🛡️' if liveness is not None else 'off'}"
         )
 
         with gr.Tab("Đăng ký (Enroll)"):
@@ -303,7 +334,7 @@ def build_app(
 
             # streaming=True + .stream → chạy identify mỗi frame webcam.
             id_img.stream(
-                fn=lambda frame, rej: identify(frame, rej, store, detector, embedders),
+                fn=lambda frame, rej: identify(frame, rej, store, detector, embedders, liveness),
                 inputs=[id_img, reject_slider],
                 outputs=[id_out, id_md],
                 show_progress=False,
@@ -324,7 +355,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     detector, embedders, threshold = load_pipeline(args.config, args.override)
-    app = build_app(detector, embedders, threshold, args.max_shots)
+    cfg = load_config(args.config, args.override)
+    # build_liveness trả None nếu liveness.enabled=false hoặc thiếu block trong config.
+    liveness = build_liveness(**cfg["liveness"]) if "liveness" in cfg else None
+    app = build_app(detector, embedders, threshold, args.max_shots, liveness)
     app.launch(share=args.share)
 
 

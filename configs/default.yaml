@@ -115,6 +115,27 @@ restorer:
   fidelity: 0.7           # w: 0=đẹp/hallucinate nhiều, 1=trung thực/an toàn identity
   device: cuda
 
+# ---- Liveness / Anti-spoofing (PAD — Presentation Attack Detection) ----
+# Gate chống "replay attack": từ chối mặt chiếu qua màn hình phone / ảnh in TRƯỚC
+# khi identify. Pretrained MiniFASNet (Silent-Face) ONNX — chỉ load, không train.
+# Dùng trong demo/webcam_app.py: detect → PAD → (live) mới align+embed+identify.
+# Mặc định BẬT cho demo; tắt khi chạy eval thuần nhận diện.
+liveness:
+  enabled: true
+  weights: weights/minifasnet.onnx
+  scale: 2.7              # nới bbox quanh tâm trước khi crop 80x80 (khớp MiniFASNetV2 2.7_80x80)
+  input_size: 80
+  # Ngưỡng P(live): score >= threshold → người thật. Tune sau khi test spoof thực
+  # tế (mặt thật ~0.99; ảnh chiếu phone nên rớt dưới ngưỡng này).
+  threshold: 0.5
+  # Index lớp "live" trong output 3-class = 1 (convention Silent-Face gốc).
+  # Verify với preprocessing [0,255] đúng: 4 ảnh mặt thật đều cho class 1 ≈ 0.88-0.99.
+  # (Trước đây nhầm =2 do bug preprocessing /255 khiến model nhả ~hằng số.)
+  live_index: 1
+  providers:
+    - CUDAExecutionProvider
+    - CPUExecutionProvider
+
 # ---- Experiment bookkeeping ----
 experiment:
   output_dir: experiments
